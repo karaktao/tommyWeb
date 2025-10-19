@@ -4,8 +4,10 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Tommy — Architectural Portfolio Flipbook</title>
+
   <!-- PageFlip CSS -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/stpageflip@2.0.7/dist/css/page-flip.min.css" />
+
   <style>
     :root{--bg:#0b0f14;--card:#11161d;--ink:#e7edf7;--muted:#9fb3c8;--accent:#5fb3ff}
     *{box-sizing:border-box}
@@ -27,6 +29,8 @@
     #thumbs canvas:hover{opacity:1}
     .hint{max-width:1200px;margin:6px auto 0;color:var(--muted);padding:0 12px}
     a{color:var(--accent)}
+    /* loading */
+    #loading{max-width:1200px;margin:20px auto;padding:12px;color:var(--muted);text-align:center}
   </style>
 </head>
 <body>
@@ -49,61 +53,91 @@
   <div id="flipbook"></div>
 </div>
 <div id="thumbs"></div>
+<div id="loading">Loading… 正在加载脚本与PDF，请稍候</div>
+
 <p class="hint">提示：支持对页浏览与“拼接展示”。如果某些作品需要<strong>左右两页拼接为一页</strong>，请在下方脚本中的 <code>spreadPairs</code> 中填入页码对（如 <code>[4,5]</code>）。拼接后这两页会被当作一页展示并带有翻页效果。</p>
 
 <!-- pdf.js -->
-<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
-<script>
-  // worker
-  pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+<script defer src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<script defer>
+  // 设置 worker（必须 https）
+  window.pdfjsLib && (pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js");
 </script>
-<!-- PageFlip (no jQuery required) -->
-<script src="https://cdn.jsdelivr.net/npm/stpageflip@2.0.7/dist/js/page-flip.browser.min.js"></script>
-<script>
+
+<!-- PageFlip（browser 版本，无需 jQuery） -->
+<script defer src="https://cdn.jsdelivr.net/npm/stpageflip@2.0.7/dist/js/page-flip.browser.min.js"></script>
+
+<!-- 主逻辑 -->
+<script defer>
 (async function(){
-  // === CONFIG ===
-  const pdfUrl = 'architecturalDesignPortfolio.pdf'; // 放在同目录
-  // 需要“拼接显示”的对页（从1开始）。示例：第4-5页做成一张跨页
+
+  // ======== 基本配置 ========
+  const pdfUrl = './architecturalDesignPortfolio.pdf'; // PDF 与 index.html 同目录
+  // 需要“拼接显示”的对页（1 起始）。例：第 4-5 页跨页
   const spreadPairs = [/* [4,5], [10,11] */];
 
-  // 目标渲染大小（像素）。会自适应缩放
+  // 目标渲染大小（像素）。按 A4 竖版比例，PageFlip 会自适应缩放
   const TARGET_W = 1400; // 单页画布宽
-  const TARGET_H = 1980; // 单页画布高（按A4/竖版比例）
+  const TARGET_H = 1980; // 单页画布高
 
   const $ = (s)=>document.querySelector(s);
-  const flipEl = $('#flipbook');
+  const flipEl   = $('#flipbook');
   const thumbsEl = $('#thumbs');
-  const cpEl = $('#cp');
-  const tpEl = $('#tp');
+  const cpEl     = $('#cp');
+  const tpEl     = $('#tp');
+  const loading  = $('#loading');
 
-  const pdf = await pdfjsLib.getDocument({url: pdfUrl}).promise;
+  // ======== 等待依赖加载（最多 5s）========
+  function waitForLibs(timeoutMs=5000, interval=50){
+    return new Promise((resolve, reject)=>{
+      const t0 = Date.now();
+      const timer = setInterval(()=>{
+        const PF = window.PageFlip || (window.St && window.St.PageFlip);
+        if (window.pdfjsLib && PF){
+          clearInterval(timer); resolve(PF);
+        }else if (Date.now() - t0 > timeoutMs){
+          clearInterval(timer); reject(new Error('Libraries not ready in time'));
+        }
+      }, interval);
+    });
+  }
+
+  let PF;
+  try{
+      PF = await waitForLibs();
+  }catch(err){
+      console.error('依赖加载失败：', err, {pdfjsLib: !!window.pdfjsLib, PageFlip: !!(window.PageFlip || (window.St && window.St.PageFlip))});
+      alert('PageFlip 或 PDF 库未加载成功，请检查网络或脚本地址（控制台查看详情）。');
+      return;
+  }
+
+  // ======== 读取 PDF ========
+  let pdf;
+  try{
+    pdf = await pdfjsLib.getDocument({url: pdfUrl}).promise;
+  }catch(err){
+    console.error('PDF 加载失败：', err);
+    alert('PDF 加载失败：请确认文件已放在同目录，文件名与大小写正确，且通过 HTTPS 访问。');
+    return;
+  }
   const total = pdf.numPages;
 
-  // 计算“展示序列”：普通单页 or 拼接跨页
+  // ======== 计算展示序列：单页 / 跨页 ========
   const spreadSet = new Set(spreadPairs.map(p=>p[0]+'-'+p[1]));
   const toDisplay = []; // {type:'single', n} | {type:'spread', l, r}
-  let i=1;
-  while(i<=total){
+  for(let i=1;i<=total;){
     const key = i+'-'+(i+1);
-    if(spreadSet.has(key)){
+    if(spreadSet.has(key) && i+1<=total){
       toDisplay.push({type:'spread', l:i, r:i+1});
-      i+=2;
+      i += 2;
     }else{
       toDisplay.push({type:'single', n:i});
-      i+=1;
+      i += 1;
     }
   }
   tpEl.textContent = toDisplay.length;
 
-
-// 兼容两种命名空间：PageFlip (新) / St.PageFlip (旧)
-const PF = window.PageFlip || (window.St && window.St.PageFlip);
-  if (!PF) {
-    console.error('PageFlip library not loaded. Check the CDN script.');
-    alert('PageFlip 库未加载成功，请检查网络或脚本地址。');
-    return;
-  }
-
+  // ======== 初始化 PageFlip ========
   const pageFlip = new PF(flipEl, {
     width: TARGET_W,
     height: TARGET_H,
@@ -113,10 +147,11 @@ const PF = window.PageFlip || (window.St && window.St.PageFlip);
     mobileScrollSupport: true,
     disableFlipByClick: false,
     autoSize: true,
+    singlePageMode: false
   });
 
   // 生成占位页（真实图像按需懒加载）
-  const pages = toDisplay.map((entry, idx)=>{
+  const pages = toDisplay.map((entry)=>{
     const page = document.createElement('div');
     page.className = 'page';
     page.style.width = TARGET_W+'px';
@@ -125,23 +160,20 @@ const PF = window.PageFlip || (window.St && window.St.PageFlip);
     canvas.width = TARGET_W; canvas.height = TARGET_H;
     canvas.dataset.rendered = '0';
     page.appendChild(canvas);
-    return {entry, idx, page, canvas};
+    return {entry, page, canvas};
   });
 
   pageFlip.loadFromHTML(pages.map(p=>p.page));
 
-  // 渲染函数（单页）
+  // ======== 渲染函数 ========
   async function renderSingle(n, canvas){
     const page = await pdf.getPage(n);
-    // 以目标高度为准计算缩放
     const viewport = page.getViewport({scale:1});
     const scale = Math.min(TARGET_W/viewport.width, TARGET_H/viewport.height);
     const v = page.getViewport({scale});
     const ctx = canvas.getContext('2d');
-    // 清空
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0,0,canvas.width,canvas.height);
-    // 居中绘制
     const off = document.createElement('canvas');
     off.width = Math.round(v.width); off.height = Math.round(v.height);
     await page.render({canvasContext: off.getContext('2d'), viewport: v}).promise;
@@ -150,7 +182,6 @@ const PF = window.PageFlip || (window.St && window.St.PageFlip);
     ctx.drawImage(off, x, y);
   }
 
-  // 渲染函数（拼接跨页，将两页左右各缩放一半宽度后塞入同一画布）
   async function renderSpread(l, r, canvas){
     const ctx = canvas.getContext('2d');
     ctx.fillStyle = '#ffffff';
@@ -159,9 +190,7 @@ const PF = window.PageFlip || (window.St && window.St.PageFlip);
     const left = await pdf.getPage(l);
     const right = await pdf.getPage(r);
 
-    // 每页占画布的一半宽度
     const halfW = canvas.width/2;
-    // 以高度为准缩放
     const vL0 = left.getViewport({scale:1});
     const vR0 = right.getViewport({scale:1});
     const sL = Math.min(halfW/vL0.width, canvas.height/vL0.height);
@@ -179,11 +208,10 @@ const PF = window.PageFlip || (window.St && window.St.PageFlip);
 
     const yL = (canvas.height - offL.height)/2;
     const yR = (canvas.height - offR.height)/2;
-    // 左右各居中在半幅
     ctx.drawImage(offL, (halfW-offL.width)/2, yL);
     ctx.drawImage(offR, halfW + (halfW-offR.width)/2, yR);
 
-    // 中缝细线（可选）
+    // 中缝
     ctx.fillStyle = '#e5e7eb';
     ctx.fillRect(canvas.width/2 - .5, 0, 1, canvas.height);
   }
@@ -201,7 +229,9 @@ const PF = window.PageFlip || (window.St && window.St.PageFlip);
   }
 
   pageFlip.on('init', async ()=>{
+    loading.textContent = 'Rendering… 正在渲染首页';
     await ensureRendered(0);
+    loading.remove();
   });
 
   pageFlip.on('flip', async (e)=>{
@@ -209,14 +239,13 @@ const PF = window.PageFlip || (window.St && window.St.PageFlip);
     await ensureRendered(e.data);
   });
 
-  // 控件
+  // ======== 控件 ========
   $('#prev').onclick = ()=>pageFlip.flipPrev();
   $('#next').onclick = ()=>pageFlip.flipNext();
 
   $('#toggleMode').onclick = ()=>{
     const current = pageFlip.getSettings();
-    const newSingle = !current.singlePageMode;
-    pageFlip.update({ singlePageMode: newSingle });
+    pageFlip.update({ singlePageMode: !current.singlePageMode });
   };
 
   $('#download').onclick = ()=>{ window.open(pdfUrl, '_blank'); };
@@ -226,16 +255,15 @@ const PF = window.PageFlip || (window.St && window.St.PageFlip);
     else { document.exitFullscreen?.(); }
   };
 
-  // 生成缩略图（低成本渲染）
+  // ======== 生成缩略图 ========
   for(let k=0;k<toDisplay.length;k++){
     const tcv = document.createElement('canvas');
-    tcv.height = 120; tcv.width = 120/1.4142; // 约等A系列比例
+    tcv.height = 120; tcv.width = Math.round(120/1.4142); // A 系列比例
     const tctx = tcv.getContext('2d');
     tctx.fillStyle = '#ffffff';
     tctx.fillRect(0,0,tcv.width,tcv.height);
     thumbsEl.appendChild(tcv);
 
-    // 用同一套渲染，但用小画布
     if(toDisplay[k].type==='single'){
       const page = await pdf.getPage(toDisplay[k].n);
       const v0 = page.getViewport({scale:1});
@@ -263,10 +291,9 @@ const PF = window.PageFlip || (window.St && window.St.PageFlip);
       tctx.fillStyle = '#e5e7eb'; tctx.fillRect(tcv.width/2-0.5,0,1,tcv.height);
     }
 
-    tcv.onclick = ()=>{
-      pageFlip.flip(k);
-    };
+    tcv.onclick = ()=>pageFlip.flip(k);
   }
+
 })();
 </script>
 </body>
