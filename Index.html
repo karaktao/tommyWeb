@@ -95,9 +95,17 @@
   }
   tpEl.textContent = toDisplay.length;
 
-  // 创建 PageFlip 实例
-  const pageFlip = new St.PageFlip(flipEl, {
-    width: TARGET_W,      // 内容的基础宽高（库会等比缩放以适配容器）
+
+// 兼容两种命名空间：PageFlip (新) / St.PageFlip (旧)
+const PF = window.PageFlip || (window.St && window.St.PageFlip);
+  if (!PF) {
+    console.error('PageFlip library not loaded. Check the CDN script.');
+    alert('PageFlip 库未加载成功，请检查网络或脚本地址。');
+    return;
+  }
+
+  const pageFlip = new PF(flipEl, {
+    width: TARGET_W,
     height: TARGET_H,
     maxShadowOpacity: 0.2,
     showCover: false,
