@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "page-flip": "^2.0.7",
+    "pdfjs-dist": "https://registry.npmmirror.com/pdfjs-dist/-/pdfjs-dist-3.11.174.tgz"
+  }
+}

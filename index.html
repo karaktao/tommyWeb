@@ -1,264 +1,302 @@
 <!doctype html>
 <html lang="zh-CN">
+
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Tommy — Architectural Portfolio Flipbook</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tommy — Architectural Portfolio (Flipbook)</title>
+    <style>
+        :root {
+            --bg: #0b0f14;
+            --ink: #e7edf7;
+        }
 
-  <!-- PageFlip CSS：双CDN并行，谁先成功用谁 -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/stpageflip@2.0.7/dist/css/page-flip.min.css" />
-  <link rel="stylesheet" href="https://unpkg.com/stpageflip@2.0.7/dist/css/page-flip.min.css" />
+        * {
+            box-sizing: border-box;
+        }
 
-  <style>
-    :root{--bg:#0b0f14;--card:#11161d;--ink:#e7edf7;--muted:#9fb3c8;--accent:#5fb3ff}
-    *{box-sizing:border-box}
-    html,body{height:100%;}
-    body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial}
-    header{position:sticky;top:0;z-index:50;background:linear-gradient(180deg,rgba(11,15,20,.9),rgba(11,15,20,.6));backdrop-filter: blur(6px);}
-    .bar{max-width:1200px;margin:0 auto;display:flex;gap:.5rem;align-items:center;padding:.5rem}
-    .bar h1{font-size:16px;margin:0 8px 0 0;color:var(--ink);font-weight:600}
-    .btn{display:inline-flex;align-items:center;gap:.35rem;padding:.45rem .7rem;border:1px solid #263040;border-radius:10px;background:var(--card);color:var(--ink);cursor:pointer}
-    .btn:hover{border-color:#2e3b4d}
-    .btn[disabled]{opacity:.5;cursor:not-allowed}
-    .right{margin-left:auto;display:flex;gap:.5rem}
-    .counter{color:var(--muted);min-width:7ch;text-align:center}
-    #viewer-wrap{max-width:1200px;margin:10px auto 30px;padding:0 10px}
-    #flipbook{width:100%;height:75vh;border-radius:16px;overflow:hidden;background:radial-gradient(circle at 50% 0%,#16202b,#0b0f14 60%)}
-    #thumbs{max-width:1200px;margin:8px auto;display:flex;gap:.5rem;overflow:auto;padding:0 10px}
-    #thumbs canvas{height:80px;border-radius:8px;border:1px solid #243040;cursor:pointer;opacity:.75}
-    #thumbs canvas:hover{opacity:1}
-    .hint{max-width:1200px;margin:6px auto 0;color:var(--muted);padding:0 12px}
-    a{color:var(--accent)}
-    #loading{max-width:1200px;margin:20px auto;padding:12px;color:var(--muted);text-align:center}
-  </style>
+        html,
+        body {
+            height: 100%;
+        }
+
+        body {
+            margin: 0;
+            color: var(--ink);
+            font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial;
+
+            /* 背景：渐变 + 细微暗纹理（不抢画面） */
+            background:
+                radial-gradient(1200px 560px at 50% 15%, #101925 0%, #0a131d 45%, #071119 100%) fixed,
+                linear-gradient(180deg, rgba(255, 255, 255, .02), rgba(255, 255, 255, .00)) fixed;
+            background-attachment: fixed;
+        }
+
+        /* 容器：上下留白（呼吸空间），两侧自适应；不会贴满窗口边缘 */
+        .wrap {
+            max-width: min(1200px, 92vw);
+            margin-inline: auto;
+            padding-inline: clamp(10px, 2vw, 24px);
+            padding-block: clamp(16px, 6vh, 80px);
+            /* 上下留白 */
+            position: relative;
+        }
+
+        /* 暖白纸张（避免跟冷灰背景混色），细边框+外阴影 */
+        #flipbook {
+            position: relative;
+            width: 100%;
+            height: clamp(420px, 78vh, 1200px);
+            border-radius: 10px;
+            background: #f1f1f1;
+            /* 比 #fff 更暖，更容易与背景分离 */
+            box-shadow:
+                0 22px 60px rgba(0, 0, 0, .52),
+                /* 主阴影：更深一点 */
+                0 0 160px rgba(95, 179, 255, .07);
+            /* 冷色柔光：极低不透明 */
+            outline: 1px solid rgba(20, 28, 38, .14);
+            /* 细描边：防止边缘消失 */
+            overflow: hidden;
+            user-select: none;
+        }
+
+        /* 边角暗角：让纸边不“发灰”——注意不宜过重 */
+        #flipbook::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            box-shadow:
+                inset 0 0 160px rgba(0, 0, 0, .22),
+                inset 0 0 320px rgba(0, 0, 0, .16);
+        }
+
+    
+
+        /* PageFlip 内部 page 容器（尺寸由 JS 注入，不再写死） */
+        .page {
+            position: relative;
+        }
+
+        .page canvas,
+        .page img {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* 骨架屏动画（首帧占位） */
+        .skeleton {
+            background: linear-gradient(90deg, #f3f5f7 25%, #eceff2 37%, #f3f5f7 63%);
+            background-size: 400% 100%;
+            animation: shimmer 1.4s ease infinite;
+        }
+
+        @keyframes shimmer {
+            0% {
+                background-position: 100% 0
+            }
+
+            100% {
+                background-position: 0 0
+            }
+        }
+
+        /* —— 中缝分割线（浅灰渐变线，模拟纸缝；覆盖 PageFlip 默认阴影） —— */
+        .st-page-book .st-page-shadow {
+            background: linear-gradient(90deg,
+                    rgba(200, 200, 200, 0.0) 49.2%,
+                    rgba(200, 200, 200, 0.45) 50%,
+                    rgba(200, 200, 200, 0.0) 50.8%) !important;
+            box-shadow: none !important;
+        }
+    </style>
 </head>
+
 <body>
-<header>
-  <div class="bar">
-    <h1>建筑作品集 · Flipbook</h1>
-    <button id="prev" class="btn" title="上一页">◀︎ Prev</button>
-    <div class="counter"><span id="cp">1</span>/<span id="tp">…</span></div>
-    <button id="next" class="btn" title="下一页">Next ▶︎</button>
-
-    <div class="right">
-      <button id="toggleMode" class="btn" title="单页/对页显示">Toggle Single/Spread</button>
-      <button id="download" class="btn" title="下载PDF">Download PDF</button>
-      <button id="full" class="btn" title="全屏">Fullscreen</button>
+    <div class="wrap">
+        <div id="flipbook"></div>
     </div>
-  </div>
-</header>
 
-<div id="viewer-wrap">
-  <div id="flipbook"></div>
-</div>
-<div id="thumbs"></div>
-<div id="loading">Loading… 正在加载脚本与PDF，请稍候</div>
+    <!-- 本地脚本：pdf.js & PageFlip -->
+    <script src="./libs/pdf.min.js"></script>
+    <script>
+        if (window.pdfjsLib) {
+            pdfjsLib.GlobalWorkerOptions.workerSrc = "./libs/pdf.worker.min.js";
+        }
+    </script>
+    <script src="./libs/page-flip.browser.js"></script>
 
-<p class="hint">提示：支持对页浏览与“拼接展示”。如果某些作品需要<strong>左右两页拼接为一页</strong>，请在下方脚本中的 <code>spreadPairs</code> 中填入页码对（如 <code>[4,5]</code>）。拼接后这两页会被当作一页展示并带有翻页效果。</p>
+    <script>
+        (async function () {
+            const pdfUrl = "./architecturalDesignPortfolio.pdf";
 
-<!-- 动态加载器：为 pdf.js 与 PageFlip 做多源降级 -->
-<script>
-(function(){
-  function loadScriptSequence(urls, done){
-    (function next(i){
-      if(i>=urls.length) return done(new Error('all failed'));
-      var s=document.createElement('script');
-      s.src=urls[i];
-      s.defer=true;
-      s.crossOrigin="anonymous";
-      s.referrerPolicy="no-referrer";
-      s.onload=function(){ done(null, urls[i]); };
-      s.onerror=function(){ s.remove(); next(i+1); };
-      document.head.appendChild(s);
-    })(0);
-  }
-  // 1) pdf.js
-  loadScriptSequence([
-    "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js",
-    "https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js"
-  ], function(err){
-    if(!err && window.pdfjsLib){
-      pdfjsLib.GlobalWorkerOptions.workerSrc =
-        "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
-      // 备用 worker（若 jsDelivr 不通，pdf.js 会自动回退到同源，但我们再补一个）
-      var testImg=new Image(); testImg.onload=testImg.onerror=function(){
-        if(this.complete===false){ pdfjsLib.GlobalWorkerOptions.workerSrc =
-          "https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js"; }
-      }; testImg.src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
-    }
-  });
-  // 2) PageFlip（browser 版本）
-  loadScriptSequence([
-    "https://cdn.jsdelivr.net/npm/stpageflip@2.0.7/dist/js/page-flip.browser.min.js",
-    "https://unpkg.com/stpageflip@2.0.7/dist/js/page-flip.browser.min.js"
-  ], function(err, okUrl){
-    if(err){ console.error('PageFlip 全部来源加载失败'); }
-  });
-})();
-</script>
+            // ===== 小工具 =====
+            const $ = s => document.querySelector(s);
+            const idle = window.requestIdleCallback || (fn => setTimeout(fn, 50));
 
-<!-- 主逻辑：等待依赖就绪后启动 -->
-<script>
-(async function(){
-  const pdfUrl = './architecturalDesignPortfolio.pdf';   // 与 index.html 同目录
-  const spreadPairs = [/* [4,5], [10,11] */];
-  const TARGET_W = 1400, TARGET_H = 1980;
+            // ===== 以 23cm × 21cm 的纸张比例渲染 =====
+            const CM_W = 23, CM_H = 21;                  // 实际尺寸（厘米）
+            const RATIO = CM_H / CM_W;                   // 高宽比 = 21/23
+            const PAGE_W = 1100;                         // 逻辑基准宽度（像素，可调）
+            const PAGE_H = Math.round(PAGE_W * RATIO);   // 严格按 23:21 比例计算高度
 
-  const $ = s => document.querySelector(s);
-  const flipEl = $('#flipbook'), thumbsEl = $('#thumbs');
-  const cpEl = $('#cp'), tpEl = $('#tp'), loading = $('#loading');
+            // 限制渲染像素密度，避免超高分屏过慢
+            const DPR_CAP = 1.5;
+            const DPR = Math.min(window.devicePixelRatio || 1, DPR_CAP);
 
-  function waitForLibs(timeoutMs=7000, interval=60){
-    return new Promise((resolve, reject)=>{
-      const t0=Date.now();
-      const timer=setInterval(()=>{
-        const PF = window.PageFlip || (window.St && window.St.PageFlip);
-        if (window.pdfjsLib && PF){ clearInterval(timer); resolve(PF); }
-        else if(Date.now()-t0>timeoutMs){ clearInterval(timer); reject({pdfjslib:!!window.pdfjsLib, PageFlip:!!(window.PageFlip||(window.St&&window.St.PageFlip))}); }
-      }, interval);
-    });
-  }
+            // ===== 初始化 PageFlip（柔和翻页，阴影更轻） =====
+            const flipRoot = $("#flipbook");
+            const PFClass = window.PageFlip || (window.St && window.St.PageFlip);
+            const pageFlip = new PFClass(flipRoot, {
+                width: PAGE_W,
+                height: PAGE_H,
+                size: "stretch",
+                flippingTime: 800,          // 动画更柔和
+                maxShadowOpacity: 0.10,      // 阴影更轻，配合中缝灰线
+                showCover: false,
+                mobileScrollSupport: true,
+                useMouseEvents: true,
+                disableFlipByClick: false,
+                startZIndex: 3,
+                singlePageMode: false
+            });
 
-  let PF;
-  try{
-    PF = await waitForLibs();
-  }catch(state){
-    console.error('依赖加载失败：', state);
-    alert('PageFlip 或 PDF 库未加载成功，请检查网络或脚本地址（控制台查看详情）。');
-    return;
-  }
+            // 键盘导航
+            window.addEventListener("keydown", e => {
+                if (e.key === "ArrowLeft") pageFlip.flipPrev();
+                else if (e.key === "ArrowRight") pageFlip.flipNext();
+            });
 
-  // 读取 PDF
-  let pdf;
-  try{
-    pdf = await pdfjsLib.getDocument({url: pdfUrl}).promise;
-  }catch(err){
-    console.error('PDF 加载失败：', err);
-    alert('PDF 加载失败：请确认文件与 index.html 同目录、文件名大小写正确、且通过 HTTPS 访问。');
-    return;
-  }
-  const total = pdf.numPages;
+            // ===== 加载 PDF =====
+            let pdf;
+            try {
+                pdf = await pdfjsLib.getDocument({ url: pdfUrl }).promise;
+            } catch (e) {
+                console.error(e);
+                flipRoot.innerHTML = "<div style='padding:16px'>PDF 加载失败，请确认文件路径与大小写。</div>";
+                return;
+            }
+            const total = pdf.numPages;
 
-  // 展示序列
-  const spreadSet = new Set(spreadPairs.map(p=>p[0]+'-'+p[1]));
-  const toDisplay = [];
-  for(let i=1;i<=total;){
-    const key = i+'-'+(i+1);
-    if(spreadSet.has(key) && i+1<=total){ toDisplay.push({type:'spread', l:i, r:i+1}); i+=2; }
-    else { toDisplay.push({type:'single', n:i}); i+=1; }
-  }
-  tpEl.textContent = toDisplay.length;
+            // ===== DOM 预构建（先放白纸骨架） =====
+            const pages = [];
+            const frag = document.createDocumentFragment();
+            for (let i = 1; i <= total; i++) {
+                const holder = document.createElement("div");
+                holder.className = "page";
+                holder.style.width = PAGE_W + "px";
+                holder.style.height = PAGE_H + "px";
 
-  // 初始化 PageFlip
-  const pageFlip = new (window.PageFlip || (window.St && window.St.PageFlip))(flipEl, {
-    width: TARGET_W,
-    height: TARGET_H,
-    maxShadowOpacity: 0.2,
-    showCover: false,
-    useMouseEvents: true,
-    mobileScrollSupport: true,
-    disableFlipByClick: false,
-    autoSize: true,
-    singlePageMode: false
-  });
+                const canvas = document.createElement("canvas");
+                canvas.width = Math.round(PAGE_W * DPR);
+                canvas.height = Math.round(PAGE_H * DPR);
+                canvas.style.width = "100%";
+                canvas.style.height = "100%";
+                canvas.className = "skeleton";
+                canvas.dataset.pageIndex = String(i);
+                canvas.dataset.ready = "0";
+                holder.appendChild(canvas);
 
-  // 占位页
-  const pages = toDisplay.map(entry=>{
-    const page = document.createElement('div');
-    page.className='page';
-    page.style.width = TARGET_W+'px';
-    page.style.height = TARGET_H+'px';
-    const canvas=document.createElement('canvas');
-    canvas.width=TARGET_W; canvas.height=TARGET_H;
-    canvas.dataset.rendered='0';
-    page.appendChild(canvas);
-    return {entry, page, canvas};
-  });
-  pageFlip.loadFromHTML(pages.map(p=>p.page));
+                frag.appendChild(holder);
+                pages.push(holder);
+            }
+            flipRoot.appendChild(frag);
+            pageFlip.loadFromHTML(flipRoot.querySelectorAll(".page"));
 
-  // 渲染
-  async function renderSingle(n, canvas){
-    const page = await pdf.getPage(n);
-    const v0 = page.getViewport({scale:1});
-    const scale = Math.min(TARGET_W/v0.width, TARGET_H/v0.height);
-    const v = page.getViewport({scale});
-    const ctx = canvas.getContext('2d');
-    ctx.fillStyle='#fff'; ctx.fillRect(0,0,canvas.width,canvas.height);
-    const off=document.createElement('canvas'); off.width=Math.round(v.width); off.height=Math.round(v.height);
-    await page.render({canvasContext: off.getContext('2d'), viewport: v}).promise;
-    ctx.drawImage(off,(canvas.width-off.width)/2,(canvas.height-off.height)/2);
-  }
-  async function renderSpread(l, r, canvas){
-    const ctx=canvas.getContext('2d');
-    ctx.fillStyle='#fff'; ctx.fillRect(0,0,canvas.width,canvas.height);
-    const L=await pdf.getPage(l), R=await pdf.getPage(r);
-    const half=canvas.width/2;
-    const vL0=L.getViewport({scale:1}), vR0=R.getViewport({scale:1});
-    const sL=Math.min(half/vL0.width, canvas.height/vL0.height);
-    const sR=Math.min(half/vR0.width, canvas.height/vR0.height);
-    const vL=L.getViewport({scale:sL}), vR=R.getViewport({scale:sR});
-    const offL=document.createElement('canvas'); offL.width=vL.width; offL.height=vL.height;
-    const offR=document.createElement('canvas'); offR.width=vR.width; offR.height=vR.height;
-    await L.render({canvasContext:offL.getContext('2d'), viewport:vL}).promise;
-    await R.render({canvasContext:offR.getContext('2d'), viewport:vR}).promise;
-    ctx.drawImage(offL, (half-offL.width)/2, (canvas.height-offL.height)/2);
-    ctx.drawImage(offR, half+(half-offR.width)/2, (canvas.height-offR.height)/2);
-    ctx.fillStyle='#e5e7eb'; ctx.fillRect(canvas.width/2-0.5,0,1,canvas.height);
-  }
-  async function ensureRendered(index){
-    for(const j of [index-1,index,index+1]){
-      if(j<0||j>=pages.length) continue;
-      const p=pages[j];
-      if(p.canvas.dataset.rendered==='1') continue;
-      if(p.entry.type==='single') await renderSingle(p.entry.n, p.canvas);
-      else await renderSpread(p.entry.l, p.entry.r, p.canvas);
-      p.canvas.dataset.rendered='1';
-    }
-  }
+            // ===== 渲染缓存（ImageBitmap） =====
+            const pageBitmapCache = new Map(); // i -> ImageBitmap
+            const pageObjCache = new Map();    // i -> pdfPage
 
-  pageFlip.on('init', async ()=>{ loading.textContent='Rendering… 正在渲染首页'; await ensureRendered(0); loading.remove(); });
-  pageFlip.on('flip', async e=>{ cpEl.textContent=String(e.data+1); await ensureRendered(e.data); });
+            async function getPdfPage(i) {
+                if (pageObjCache.has(i)) return pageObjCache.get(i);
+                const p = await pdf.getPage(i);
+                pageObjCache.set(i, p);
+                return p;
+            }
 
-  // 控件
-  document.getElementById('prev').onclick = ()=>pageFlip.flipPrev();
-  document.getElementById('next').onclick = ()=>pageFlip.flipNext();
-  document.getElementById('toggleMode').onclick = ()=>{
-    const cur = pageFlip.getSettings(); pageFlip.update({ singlePageMode: !cur.singlePageMode });
-  };
-  document.getElementById('download').onclick = ()=>window.open(pdfUrl,'_blank');
-  document.getElementById('full').onclick = ()=>{
-    const el=document.documentElement; if(!document.fullscreenElement){ el.requestFullscreen?.(); } else { document.exitFullscreen?.(); }
-  };
+            const queue = []; let busy = false;
+            function enqueue(i, priority = 10) {
+                if (pageBitmapCache.has(i)) return;
+                if (queue.find(it => it.i === i)) return;
+                queue.push({ i, priority });
+                queue.sort((a, b) => a.priority - b.priority);
+                pump();
+            }
+            async function pump() {
+                if (busy) return;
+                busy = true;
+                while (queue.length) {
+                    const { i } = queue.shift();
+                    if (pageBitmapCache.has(i)) continue;
+                    try { await renderToBitmap(i); } catch (e) { console.warn("render fail p" + i, e); }
+                }
+                busy = false;
+            }
 
-  // 缩略图
-  for(let k=0;k<toDisplay.length;k++){
-    const tcv=document.createElement('canvas'); tcv.height=120; tcv.width=Math.round(120/1.4142);
-    const tctx=tcv.getContext('2d'); tctx.fillStyle='#fff'; tctx.fillRect(0,0,tcv.width,tcv.height);
-    thumbsEl.appendChild(tcv);
-    if(toDisplay[k].type==='single'){
-      const page=await pdf.getPage(toDisplay[k].n); const v0=page.getViewport({scale:1});
-      const s=Math.min(tcv.width/v0.width, tcv.height/v0.height); const v=page.getViewport({scale:s});
-      const off=document.createElement('canvas'); off.width=v.width; off.height=v.height;
-      await page.render({canvasContext:off.getContext('2d'), viewport:v}).promise;
-      tctx.drawImage(off,(tcv.width-off.width)/2,(tcv.height-off.height)/2);
-    }else{
-      const L=await pdf.getPage(toDisplay[k].l), R=await pdf.getPage(toDisplay[k].r);
-      const vL0=L.getViewport({scale:1}), vR0=R.getViewport({scale:1});
-      const half=tcv.width/2;
-      const sL=Math.min(half/vL0.width, tcv.height/vL0.height);
-      const sR=Math.min(half/vR0.width, tcv.height/vR0.height);
-      const vL=L.getViewport({scale:sL}), vR=R.getViewport({scale:sR});
-      const offL=document.createElement('canvas'); offL.width=vL.width; offL.height=vL.height;
-      const offR=document.createElement('canvas'); offR.width=vR.width; offR.height=vR.height;
-      await L.render({canvasContext:offL.getContext('2d'), viewport:vL}).promise;
-      await R.render({canvasContext:offR.getContext('2d'), viewport:vR}).promise;
-      tctx.drawImage(offL,(half-offL.width)/2,(tcv.height-offL.height)/2);
-      tctx.drawImage(offR,half+(half-offR.width)/2,(tcv.height-offR.height)/2);
-      tctx.fillStyle='#e5e7eb'; tctx.fillRect(tcv.width/2-0.5,0,1,tcv.height);
-    }
-    tcv.onclick=()=>pageFlip.flip(k);
-  }
-})();
-</script>
+            async function renderToBitmap(i) {
+                const page = await getPdfPage(i);
+                const v0 = page.getViewport({ scale: 1 });
+                const scale = Math.min((PAGE_W * DPR) / v0.width, (PAGE_H * DPR) / v0.height);
+                const viewport = page.getViewport({ scale });
+
+                const off = (typeof OffscreenCanvas !== "undefined")
+                    ? new OffscreenCanvas(Math.round(viewport.width), Math.round(viewport.height))
+                    : Object.assign(document.createElement("canvas"), { width: Math.round(viewport.width), height: Math.round(viewport.height) });
+
+                const ctx = off.getContext("2d", { alpha: false });
+                await page.render({ canvasContext: ctx, viewport }).promise;
+
+                const bmp = await createImageBitmap(off);
+                pageBitmapCache.set(i, bmp);
+
+                const ph = pages[i - 1].querySelector("canvas");
+                if (ph && ph.dataset.ready === "0") {
+                    const ctx2 = ph.getContext("2d");
+                    ctx2.imageSmoothingEnabled = true;
+                    ctx2.clearRect(0, 0, ph.width, ph.height);
+                    const dx = Math.round((ph.width - bmp.width) / 2);
+                    const dy = Math.round((ph.height - bmp.height) / 2);
+                    ctx2.drawImage(bmp, dx, dy);
+                    ph.classList.remove("skeleton");
+                    ph.dataset.ready = "1";
+                }
+            }
+
+            // ===== 预取：当前页前后各 2 页，并空闲时多预一点 =====
+            const WINDOW = 2;
+            async function warmAround(viewIndex) {
+                const p = viewIndex + 1;
+                const targets = new Set();
+                for (let k = -WINDOW; k <= WINDOW; k++) {
+                    const idx = p + k;
+                    if (idx >= 1 && idx <= total) targets.add(idx);
+                }
+                [...targets].sort((a, b) => Math.abs(a - p) - Math.abs(b - p))
+                    .forEach((idx, ord) => enqueue(idx, ord));
+                idle(() => {
+                    for (let j = p + WINDOW + 1; j <= Math.min(total, p + WINDOW + 4); j++) {
+                        enqueue(j, 99 + j);
+                    }
+                });
+            }
+
+            pageFlip.on("init", async () => { await warmAround(0); });
+            pageFlip.on("flip", async e => { await warmAround(e.data); });
+
+            pageFlip.turnToPage(0);
+
+            // ===== 自适应（重排 PageFlip，不重渲 PDF） =====
+            let resizeTimer = null;
+            window.addEventListener("resize", () => {
+                clearTimeout(resizeTimer);
+                resizeTimer = setTimeout(() => pageFlip.updateFromHtml(), 120);
+            });
+        })();
+    </script>
 </body>
+
 </html>
